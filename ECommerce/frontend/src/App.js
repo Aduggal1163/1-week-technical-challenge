@@ -21,7 +21,8 @@ const api = {
   // Orders
   getOrders: () => axios.get(`${API_BASE}/orders`),
   getOrder: (id) => axios.get(`${API_BASE}/orders/${id}`),
-  createOrder: (userId, order) => axios.post(`${API_BASE}/users/${userId}/orders`, order),
+  createOrder: (userId) => axios.post(`${API_BASE}/users/${userId}/orders`, {}),
+  addOrderItem: (orderId, item) => axios.post(`${API_BASE}/orders/${orderId}/items`, item),
   updateOrderStatus: (id) => axios.put(`${API_BASE}/orders/${id}`),
 };
 
@@ -102,6 +103,10 @@ const styles = {
   },
   buttonSuccess: {
     backgroundColor: '#27ae60',
+  },
+  buttonSmall: {
+    padding: '0.5rem 1rem',
+    fontSize: '0.875rem',
   },
   table: {
     width: '100%',
@@ -476,11 +481,15 @@ function Users() {
 function Orders() {
   const [orders, setOrders] = useState([]);
   const [users, setUsers] = useState([]);
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [newOrder, setNewOrder] = useState({ userId: '', totalAmount: '' });
+  const [showAddItemForm, setShowAddItemForm] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [newOrder, setNewOrder] = useState({ userId: '' });
+  const [newItem, setNewItem] = useState({ productId: '', quantity: '' });
 
   useEffect(() => {
     fetchData();
@@ -489,12 +498,14 @@ function Orders() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [ordersRes, usersRes] = await Promise.all([
+      const [ordersRes, usersRes, productsRes] = await Promise.all([
         api.getOrders(),
-        api.getUsers()
+        api.getUsers(),
+        api.getProducts()
       ]);
       setOrders(ordersRes.data);
       setUsers(usersRes.data);
+      setProducts(productsRes.data);
       setError('');
     } catch (err) {
       setError('Failed to fetch data. Make sure the backend is running on localhost:8000');
@@ -506,11 +517,9 @@ function Orders() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await api.createOrder(parseInt(newOrder.userId), {
-        total_amount: parseFloat(newOrder.totalAmount)
-      });
+      await api.createOrder(parseInt(newOrder.userId));
       setSuccess('Order created successfully!');
-      setNewOrder({ userId: '', totalAmount: '' });
+      setNewOrder({ userId: '' });
       setShowForm(false);
       fetchData();
       setTimeout(() => setSuccess(''), 3000);
@@ -522,6 +531,34 @@ function Orders() {
         setError(errorDetail || 'Failed to create order');
       }
     }
+  };
+
+  const handleAddItem = async (e) => {
+    e.preventDefault();
+    try {
+      await api.addOrderItem(selectedOrderId, {
+        product_id: parseInt(newItem.productId),
+        quantity: parseInt(newItem.quantity)
+      });
+      setSuccess('Item added to order successfully!');
+      setNewItem({ productId: '', quantity: '' });
+      setShowAddItemForm(false);
+      setSelectedOrderId(null);
+      fetchData();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      const errorDetail = err.response?.data?.detail;
+      if (Array.isArray(errorDetail)) {
+        setError(errorDetail.map(e => e.msg).join(', '));
+      } else {
+        setError(errorDetail || 'Failed to add item');
+      }
+    }
+  };
+
+  const openAddItemForm = (orderId) => {
+    setSelectedOrderId(orderId);
+    setShowAddItemForm(true);
   };
 
   const handleUpdateStatus = async (id) => {
@@ -572,16 +609,37 @@ function Orders() {
                 <option key={user.id} value={user.id}>{user.username} ({user.email})</option>
               ))}
             </select>
+            <button type="submit" style={styles.button}>Create Order</button>
+          </form>
+        </div>
+      )}
+
+      {showAddItemForm && (
+        <div style={styles.card}>
+          <h2 style={{marginBottom: '1rem'}}>Add Item to Order #{selectedOrderId}</h2>
+          <form onSubmit={handleAddItem} style={styles.form}>
+            <select
+              style={styles.input}
+              value={newItem.productId}
+              onChange={(e) => setNewItem({...newItem, productId: e.target.value})}
+              required
+            >
+              <option value="">Select Product</option>
+              {products.map(product => (
+                <option key={product.id} value={product.id}>
+                  {product.name} - ${product.price} (Stock: {product.stock})
+                </option>
+              ))}
+            </select>
             <input
               style={styles.input}
               type="number"
-              step="0.01"
-              placeholder="Total Amount"
-              value={newOrder.totalAmount}
-              onChange={(e) => setNewOrder({...newOrder, totalAmount: e.target.value})}
+              placeholder="Quantity"
+              value={newItem.quantity}
+              onChange={(e) => setNewItem({...newItem, quantity: e.target.value})}
               required
             />
-            <button type="submit" style={styles.button}>Create Order</button>
+            <button type="submit" style={styles.button}>Add Item</button>
           </form>
         </div>
       )}
@@ -614,14 +672,24 @@ function Orders() {
                     </span>
                   </td>
                   <td style={styles.td}>
-                    {order.status !== 'completed' && (
-                      <button 
-                        style={{...styles.button, ...styles.buttonSuccess}}
-                        onClick={() => handleUpdateStatus(order.id)}
-                      >
-                        Mark Complete
-                      </button>
-                    )}
+                    <div style={{display: 'flex', gap: '0.5rem'}}>
+                      {order.status !== 'completed' && (
+                        <>
+                          <button 
+                            style={{...styles.button, ...styles.buttonSuccess, ...styles.buttonSmall}}
+                            onClick={() => openAddItemForm(order.id)}
+                          >
+                            Add Item
+                          </button>
+                          <button 
+                            style={{...styles.button, ...styles.buttonSuccess, ...styles.buttonSmall}}
+                            onClick={() => handleUpdateStatus(order.id)}
+                          >
+                            Complete
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

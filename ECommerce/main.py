@@ -39,13 +39,16 @@ class ProductCreate(BaseModel):
     stock:int
 
 class OrderCreate(BaseModel):
-    total_amount:float
+    pass
 
 class OrderItemCreate(BaseModel):
     order_id:int
     product_id:int
     quantity:int
 
+class OrderItemCreate(BaseModel):
+    product_id: int
+    quantity: int
 #API's
 
 #USERS
@@ -162,7 +165,7 @@ async def create_order(user_id: int, order: OrderCreate, db:db_dependency):
         )
     
     new_order = models.Order(
-        total_amount=order.total_amount,
+        total_amount=0,
         user_id=user_id
     )
     db.add(new_order)
@@ -192,7 +195,45 @@ async def order_by_id(id: int, db:db_dependency):
         "message": "Order fetched successfully",
         "order": order
     }
+@app.post("/orders/{order_id}/items", status_code=status.HTTP_201_CREATED)
+async def add_order_item(order_id: int, item: OrderItemCreate, db: db_dependency):
 
+    #  Check Order exists
+    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    #  Check Product exists
+    product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    #  Check stock
+    if product.stock < item.quantity:
+        raise HTTPException(status_code=400, detail="Not enough stock")
+
+    # Create OrderItem
+    order_item = models.OrderItem(
+        order_id=order_id,
+        product_id=item.product_id,
+        quantity=item.quantity
+    )
+
+    db.add(order_item)
+
+    # Reduce stock
+    product.stock -= item.quantity
+
+    #  Auto calculate total
+    order.total_amount += product.price * item.quantity
+
+    db.commit()
+    db.refresh(order_item)
+
+    return {
+        "message": "Item added to order",
+        "order_item": order_item
+    }
 #update order status
 @app.put('/orders/{id}',status_code=status.HTTP_200_OK)
 async def update_status(id : int, db:db_dependency):

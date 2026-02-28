@@ -26,3 +26,6 @@ Thumbs.db
 
 # Migrations (optional if using Alembic auto-generated files)
 __pycache__/
+node_modules/
+ecommerce.db
+README.md
